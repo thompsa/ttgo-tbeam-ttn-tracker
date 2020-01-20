@@ -62,8 +62,7 @@ void buildPacket(uint8_t txBuffer[]); // needed for platformio
  */
 bool trySend() {
   packetSent = false;
-  // We also wait for altitude being not exactly zero, because the GPS chip generates a bogus 0 alt report when first powered on
-  if (0 < gps_hdop() && gps_hdop() < 50 && gps_latitude() != 0 && gps_longitude() != 0 && gps_altitude() != 0)
+  if (0 < gps_hdop() && gps_hdop() < 50 && gps_latitude() != 0 && gps_longitude() != 0)
   {
     char buffer[40];
     snprintf(buffer, sizeof(buffer), "Latitude: %10.6f\n", gps_latitude());
@@ -90,56 +89,19 @@ bool trySend() {
   }
 }
 
-
-void doDeepSleep(uint64_t msecToWake)
-{
-    Serial.printf("Entering deep sleep for %llu seconds\n", msecToWake / 1000);
-
-    // not using wifi yet, but once we are this is needed to shutoff the radio hw
-    // esp_wifi_stop();
-
-    screen_off(); // datasheet says this will draw only 10ua
-    LMIC_shutdown(); // cleanly shutdown the radio
-    
-    if(axp192_found) {
-        // turn on after initial testing with real hardware
-        axp.setPowerOutPut(AXP192_LDO2, AXP202_OFF); // LORA radio
-        axp.setPowerOutPut(AXP192_LDO3, AXP202_OFF); // GPS main power
-    }
-
-    // FIXME - use an external 10k pulldown so we can leave the RTC peripherals powered off
-    // until then we need the following lines
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-
-    // Only GPIOs which are have RTC functionality can be used in this bit map: 0,2,4,12-15,25-27,32-39.
-    uint64_t gpioMask = (1ULL << BUTTON_PIN);
-
-    // FIXME change polarity so we can wake on ANY_HIGH instead - that would allow us to use all three buttons (instead of just the first)
-    gpio_pullup_en((gpio_num_t) BUTTON_PIN);
-
-    esp_sleep_enable_ext1_wakeup(gpioMask, ESP_EXT1_WAKEUP_ALL_LOW);
-
-    esp_sleep_enable_timer_wakeup(msecToWake * 1000ULL); // call expects usecs
-    esp_deep_sleep_start();                              // TBD mA sleep current (battery)
-}
-
-
 void sleep() {
 #if SLEEP_BETWEEN_MESSAGES
 
-  // If the user has a screen, tell them we are about to sleep
-  if(ssd1306_found) {
-    // Show the going to sleep message on the screen
-    char buffer[20];
-    snprintf(buffer, sizeof(buffer), "Sleeping in %3.1fs\n", (MESSAGE_TO_SLEEP_DELAY / 1000.0));
-    screen_print(buffer);
+  // Show the going to sleep message on the screen
+  char buffer[20];
+  snprintf(buffer, sizeof(buffer), "Sleeping in %3.1fs\n", (MESSAGE_TO_SLEEP_DELAY / 1000.0));
+  screen_print(buffer);
 
-    // Wait for MESSAGE_TO_SLEEP_DELAY millis to sleep
-    delay(MESSAGE_TO_SLEEP_DELAY);
+  // Wait for MESSAGE_TO_SLEEP_DELAY millis to sleep
+  delay(MESSAGE_TO_SLEEP_DELAY);
 
-    // Turn off screen
-    screen_off();
-    }
+  // Turn off screen
+  screen_off();
 
   // Set the user button to wake the board
   sleep_interrupt(BUTTON_PIN, LOW);
@@ -147,7 +109,7 @@ void sleep() {
   // We sleep for the interval between messages minus the current millis
   // this way we distribute the messages evenly every SEND_INTERVAL millis
   uint32_t sleep_for = (millis() < SEND_INTERVAL) ? SEND_INTERVAL - millis() : SEND_INTERVAL;
-  doDeepSleep(sleep_for);
+  sleep_millis(sleep_for);
 
 #endif
 }
@@ -311,10 +273,16 @@ void setup() {
   #endif
 
   initDeepSleep();
+  // delay(1000); FIXME - remove
 
   Wire.begin(I2C_SDA, I2C_SCL);
   scanI2Cdevice();
 
+  // FIXME - remove once we know dynamic probing is working
+  #ifdef T_BEAM_V10
+  // axp192_found = true;
+  // ssd1306_found = true;
+  #endif
   axp192Init();
 
   // Buttons & LED
@@ -365,6 +333,7 @@ void loop() {
   gps_loop();
   ttn_loop();
   screen_loop();
+  loopBLE();
 
   if(packetSent) {
     packetSent = false;
