@@ -2,6 +2,7 @@
 #include <esp_gatt_defs.h>
 #include <BLE2902.h>
 #include <Arduino.h>
+#include <Update.h>
 
 static BLECharacteristic SWVersionCharacteristic(BLEUUID((uint16_t) ESP_GATT_UUID_SW_VERSION_STR), BLECharacteristic::PROPERTY_READ);
 static BLECharacteristic ManufacturerCharacteristic(BLEUUID((uint16_t) ESP_GATT_UUID_MANU_NAME), BLECharacteristic::PROPERTY_READ);
@@ -75,19 +76,72 @@ static BLECharacteristic swUpdateDataCharacteristic("e272ebac-d463-4b98-bc84-5cc
 static BLECharacteristic swUpdateCRC32Characteristic("4826129c-c22a-43a3-b066-ce8f0d5bacc6", BLECharacteristic::PROPERTY_WRITE);
 static BLECharacteristic swUpdateResultCharacteristic("5e134862-7411-4424-ac4a-210937432c77", BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
-class UpdateCallbacks: public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic *pCharacteristic) {
-      std::string value = pCharacteristic->getValue();
+
+static void dumpCharacteristic(BLECharacteristic *c) {
+      std::string value = c->getValue();
 
       if (value.length() > 0) {
-        Serial.println("*********");
         Serial.print("New value: ");
         for (int i = 0; i < value.length(); i++)
           Serial.print(value[i]);
 
         Serial.println();
-        Serial.println("*********");
       }
+}
+
+/** converting endianness pull out a 32 bit value */
+static uint32_t getValue32(BLECharacteristic *c, uint32_t defaultValue) {
+    std::string value = c->getValue();
+    uint32_t r = defaultValue;
+
+    if(value.length() == 4) 
+        r = value[0] | (value[1] << 8UL) | (value[2] << 16UL) | (value[3] << 24UL);
+    
+    return r;
+}
+
+class UpdateCallbacks : public BLECharacteristicCallbacks
+{
+    void onWrite(BLECharacteristic *pCharacteristic)
+    {
+        dumpCharacteristic(pCharacteristic);
+
+        if (pCharacteristic == &swUpdateTotalSizeCharacteristic)
+        {
+            // Check if there is enough to OTA Update
+            uint32_t len = getValue32(pCharacteristic, 0);
+            bool canBegin = Update.begin(len);
+            Serial.printf("Setting update size %u, result %d\n", len, canBegin);
+            if(!canBegin)
+                // Indicate failure by forcing the size to 0
+                pCharacteristic->setValue(0UL);
+        }
+        else if (pCharacteristic == &swUpdateDataCharacteristic)
+        {
+            std::string value = pCharacteristic->getValue();
+            uint32_t len = value.length();
+            uint8_t *data = pCharacteristic->getData();
+            Serial.printf("Writing %u\n", len);
+            Update.write(data, len);
+        }
+        else if (pCharacteristic == &swUpdateCRC32Characteristic)
+        {
+            // FIXME!  Check the CRC before asking the update to happen.
+            
+            uint8_t result = 0xff;
+            if (Update.end())
+            {
+                Serial.println("OTA done!");
+                Serial.println("Update successfully completed. Rebooting.");
+                // ESP.restart();
+            }
+            else
+            {
+                Serial.println("Error Occurred. Error #: " + String(Update.getError()));
+            }
+            result = Update.getError();
+            swUpdateResultCharacteristic.setValue(&result, 1);
+        }
     }
 };
 
