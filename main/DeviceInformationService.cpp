@@ -188,7 +188,8 @@ void initBLE() {
     BLEService *pBattery = createBatteryService(pServer);
     pServer->getAdvertising()->addServiceUUID(pBattery->getUUID());
 
-    BLEService *pUpdate = createUpdateService(pServer);
+    BLEService *pUpdate = createUpdateService(pServer); // We need to advertise this so our android ble scan operation can see it
+    pServer->getAdvertising()->addServiceUUID(pUpdate->getUUID());
 
     // start all our services (do this after creating all of them)
     pDevInfo->start();
