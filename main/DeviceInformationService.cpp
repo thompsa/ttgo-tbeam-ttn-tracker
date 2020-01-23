@@ -76,6 +76,8 @@ static BLECharacteristic swUpdateDataCharacteristic("e272ebac-d463-4b98-bc84-5cc
 static BLECharacteristic swUpdateCRC32Characteristic("4826129c-c22a-43a3-b066-ce8f0d5bacc6", BLECharacteristic::PROPERTY_WRITE);
 static BLECharacteristic swUpdateResultCharacteristic("5e134862-7411-4424-ac4a-210937432c77", BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
+#include <CRC32.h>
+CRC32 crc;
 
 static void dumpCharacteristic(BLECharacteristic *c) {
       std::string value = c->getValue();
@@ -102,14 +104,20 @@ static uint32_t getValue32(BLECharacteristic *c, uint32_t defaultValue) {
 
 class UpdateCallbacks : public BLECharacteristicCallbacks
 {
+    void onRead(BLECharacteristic *pCharacteristic) {
+        BLECharacteristicCallbacks::onRead(pCharacteristic);
+        Serial.println("Got on read");
+    }
+
     void onWrite(BLECharacteristic *pCharacteristic)
     {
-        dumpCharacteristic(pCharacteristic);
+        // dumpCharacteristic(pCharacteristic);
 
         if (pCharacteristic == &swUpdateTotalSizeCharacteristic)
         {
             // Check if there is enough to OTA Update
             uint32_t len = getValue32(pCharacteristic, 0);
+            crc.reset();
             bool canBegin = Update.begin(len);
             Serial.printf("Setting update size %u, result %d\n", len, canBegin);
             if(!canBegin)
@@ -121,26 +129,38 @@ class UpdateCallbacks : public BLECharacteristicCallbacks
             std::string value = pCharacteristic->getValue();
             uint32_t len = value.length();
             uint8_t *data = pCharacteristic->getData();
-            Serial.printf("Writing %u\n", len);
+            // Serial.printf("Writing %u\n", len);
+            crc.update(data, len);
             Update.write(data, len);
         }
         else if (pCharacteristic == &swUpdateCRC32Characteristic)
         {
-            // FIXME!  Check the CRC before asking the update to happen.
-            
+            uint32_t expectedCRC = getValue32(pCharacteristic, 0);
+            Serial.printf("expected CRC %u\n", expectedCRC);
+
             uint8_t result = 0xff;
-            if (Update.end())
-            {
-                Serial.println("OTA done!");
-                Serial.println("Update successfully completed. Rebooting.");
-                // ESP.restart();
+
+            // Check the CRC before asking the update to happen.
+            if(crc.finalize() != expectedCRC) {
+                Serial.println("Invalid CRC!");
+                result = 0xe0; // FIXME, use real error codes
             }
-            else
-            {
-                Serial.println("Error Occurred. Error #: " + String(Update.getError()));
+            else {
+                if (Update.end())
+                {
+                    Serial.println("OTA done!");
+                    // ESP.restart();
+                }
+                else
+                {
+                    Serial.println("Error Occurred. Error #: " + String(Update.getError()));
+                }
+                result = Update.getError();
             }
-            result = Update.getError();
             swUpdateResultCharacteristic.setValue(&result, 1);
+        }
+        else {
+            Serial.println("unexpected write");
         }
     }
 };
@@ -162,10 +182,10 @@ BLEService *createUpdateService(BLEServer* server) {
     // Create the BLE Service
     BLEService *service = server->createService("cb0b9a0b-a84c-4c0d-bdbb-442e3144ee30");
 
-    addWithDesc(service, &swUpdateTotalSizeCharacteristic, "total image size, 32 bit, write this first, then read read back to see if it was acceptable (0 mean not accepted)");
-    addWithDesc(service, &swUpdateDataCharacteristic, "data, variable sized, recommended 512 bytes, write one for each block of file");
-    addWithDesc(service, &swUpdateCRC32Characteristic, "crc32, write last - writing this will complete the OTA operation, now you can read result");
-    addWithDesc(service, &swUpdateResultCharacteristic, "result code, readable but will notify when the OTA operation completes");
+    addWithDesc(service, &swUpdateTotalSizeCharacteristic, "total image size");
+    addWithDesc(service, &swUpdateDataCharacteristic, "data");
+    addWithDesc(service, &swUpdateCRC32Characteristic, "crc32");
+    addWithDesc(service, &swUpdateResultCharacteristic, "result code");
 
     swUpdateTotalSizeCharacteristic.setCallbacks(&updateCb);
     swUpdateDataCharacteristic.setCallbacks(&updateCb);
