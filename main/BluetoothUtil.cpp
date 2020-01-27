@@ -134,9 +134,12 @@ void initBLE() {
 void loopBLE() {
     static uint8_t level = 31;
 
+    // Pretend to update battery levels - fixme do elsewhere
     BatteryLevelCharacteristic.setValue(&level, 1);
     BatteryLevelCharacteristic.notify();
     delay(5000);
 
     level = (level + 1) % 100;
+
+    bluetoothRebootCheck();
 }

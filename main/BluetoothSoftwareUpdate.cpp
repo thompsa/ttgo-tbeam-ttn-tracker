@@ -12,6 +12,7 @@ static BLECharacteristic swUpdateCRC32Characteristic("4826129c-c22a-43a3-b066-ce
 static BLECharacteristic swUpdateResultCharacteristic("5e134862-7411-4424-ac4a-210937432c77", BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
 CRC32 crc;
+uint32_t rebootAtMsec = 0; // If not zero we will reboot at this time (used to reboot shortly after the update completes)
 
 class UpdateCallbacks : public BLECharacteristicCallbacks
 {
@@ -59,8 +60,8 @@ class UpdateCallbacks : public BLECharacteristicCallbacks
             else {
                 if (Update.end())
                 {
-                    Serial.println("OTA done!");
-                    // ESP.restart();
+                    Serial.println("OTA done, rebooting in 5 seconds!");
+                    rebootAtMsec = millis() + 5000;
                 }
                 else
                 {
@@ -75,6 +76,11 @@ class UpdateCallbacks : public BLECharacteristicCallbacks
         }
     }
 };
+
+void bluetoothRebootCheck() {
+    if(rebootAtMsec && millis() > rebootAtMsec)
+        ESP.restart();
+}
 
 UpdateCallbacks updateCb;
 
