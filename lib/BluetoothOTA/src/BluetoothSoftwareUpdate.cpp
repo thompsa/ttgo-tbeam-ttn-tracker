@@ -82,7 +82,7 @@ void bluetoothRebootCheck() {
         ESP.restart();
 }
 
-UpdateCallbacks updateCb;
+static UpdateCallbacks updateCb;
 
 /*
 SoftwareUpdateService UUID cb0b9a0b-a84c-4c0d-bdbb-442e3144ee30
