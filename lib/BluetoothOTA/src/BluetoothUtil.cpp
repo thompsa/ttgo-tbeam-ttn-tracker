@@ -107,8 +107,8 @@ uint32_t getValue32(BLECharacteristic *c, uint32_t defaultValue) {
 }
 
 
-void initBLE() {
-    BLEDevice::init("KHBT Test"); // FIXME, use a real name based on the macaddr
+BLEServer *initBLE(std::string deviceName) {
+    BLEDevice::init(deviceName);
     // Create the BLE Server
     BLEServer *pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
@@ -128,6 +128,8 @@ void initBLE() {
 
     // Start advertising
     pServer->getAdvertising()->start();
+
+    return pServer;
 }
 
 // Called from loop
