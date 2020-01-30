@@ -3,31 +3,92 @@
 #include <esp_gatt_defs.h>
 #include <BLE2902.h>
 #include <Arduino.h>
+#include <assert.h>
 
+
+/*
+receivedPacketQueue - this is a queue of messages we've received from the mesh, which we are keeping to deliver to the phone.
+It is implemented with a FreeRTos queue (wrapped with a little RTQueue class) of pointers to MeshPacket protobufs (which were alloced with new).
+After a packet ptr is removed from the queue and processed it should be deleted.  (eventually we should move sent packets into a 'sentToPhone' queue
+of packets we can delete just as soon as we are sure the phone has acked those packets - when the phone writes to FromNum)
+
+mesh - an instance of Mesh class.  Which manages the interface to the mesh radio library, reception of packets from other nodes, arbitrating to select
+a node number and keeping the current nodedb.
+
+
+typedef in32_t NodeNum;
+
+class NodeInfo {
+    position;
+    last_seen
+    user
+};
+
+class NodeDB {
+    NodeNum provisionalNodeNum; // if we are trying to find a node num this is our current attempt
+
+    NodeNum ourNodeNum; // -1 if not yet found
+
+    HashMap<NodeNum, NodeInfo> nodes;
+public:
+    /// don't do mesh based algoritm for node id assignment (initially) - instead just store in flash - possibly even in the initial alpha release do this hack
+
+    /// if returns false, that means our node should send a DenyNodeNum response.  If true, we think the number is okay for use
+    // bool handleWantNodeNum(NodeNum n);
+
+    /* void handleDenyNodeNum(NodeNum FIXME read mesh proto docs, perhaps picking a random node num is not a great idea
+    and instead we should use a special 'im unconfigured node number' and include our desired node number in the wantnum message.  the
+    unconfigured node num would only be used while initially joining the mesh so low odds of conflicting (especially if we randomly select
+    from a small number of nodenums which can be used temporarily for this operation).  figure out what the lower level
+    mesh sw does if it does conflict?  would it be better for people who are replying with denynode num to just broadcast their denial?) */
+};
+
+class Mesh {
+
+public:
+
+    /// handle an incoming message from the mesh
+    void handleFromMesh(NodeNum fromNode, NodeNum toNode, std::string s);
+
+    /// handle a packet from the phone, send it on the mesh
+    void handleFromRadio(MeshPacket p);
+};
+
+/// Top level app for this service.  keeps the mesh, the radio config and the queue of received packets.
+class MeshRadio {
+public:
+};
+
+*/
+
+/// Given a ToRadio buffer parse it and properly handle it (setup radio, owner or send packet into the mesh)
+static void handleToRadio(std::string s) {
+
+}
 
 class BluetoothMeshCallbacks : public BLECharacteristicCallbacks
 {
-    void onRead(BLECharacteristic *pCharacteristic) {
-        BLECharacteristicCallbacks::onRead(pCharacteristic);
+    void onRead(BLECharacteristic *c) {
         Serial.println("Got on read");
+
+        if(c == &meshFromRadioCharacteristic) {
+            // Someone is going to read our value as soon as this callback returns.  So fill it with the next message in the queue
+            // or make empty if the queue is empty
+            // c->setValue(byteptr, len);
+        }
     }
 
-    void onWrite(BLECharacteristic *pCharacteristic)
+    void onWrite(BLECharacteristic *c)
     {
         // dumpCharacteristic(pCharacteristic);
-    /*
-        if (pCharacteristic == &swUpdateTotalSizeCharacteristic)
-        {
-            // Check if there is enough to OTA Update
-            uint32_t len = getValue32(pCharacteristic, 0);
-            crc.reset();
-            bool canBegin = Update.begin(len);
-            Serial.printf("Setting update size %u, result %d\n", len, canBegin);
-            if(!canBegin)
-                // Indicate failure by forcing the size to 0
-                pCharacteristic->setValue(0UL);
+        Serial.println("Got on write");
+
+        if(c == &meshToRadioCharacteristic) {
+            handleToRadio(c->getValue());
         }
-    */
+        else {
+            assert(0); // Not yet implemented
+        }
     }
 };
 
@@ -40,7 +101,7 @@ static BLECharacteristic meshFromNumCharacteristic("ed9da18c-a800-4f66-a670-aa75
 /*
 MeshBluetoothService UUID 6ba1b218-15a8-461f-9fa8-5dcae273eafd
 
-FIXME - notify vs indiciation for fromradio output.  Using notify for now, not sure if that is best
+FIXME - notify vs indication for fromradio output.  Using notify for now, not sure if that is best
 FIXME - in the esp32 mesh managment code, occasionally mirror the current net db to flash, so that if we reboot we still have a good guess of users who are out there.
 FIXME - make sure this protocol is guaranteed robust and won't drop packets
 

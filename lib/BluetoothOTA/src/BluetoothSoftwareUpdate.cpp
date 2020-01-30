@@ -17,7 +17,6 @@ uint32_t rebootAtMsec = 0; // If not zero we will reboot at this time (used to r
 class UpdateCallbacks : public BLECharacteristicCallbacks
 {
     void onRead(BLECharacteristic *pCharacteristic) {
-        BLECharacteristicCallbacks::onRead(pCharacteristic);
         Serial.println("Got on read");
     }
 
