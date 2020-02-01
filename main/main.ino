@@ -25,7 +25,7 @@
 #include "rom/rtc.h"
 #include <TinyGPS++.h>
 #include <Wire.h>
-#include "BluetoothOTA.h"
+#include "BluetoothUtil.h"
 
 #ifdef T_BEAM_V10
 #include "axp20x.h"
@@ -332,84 +332,36 @@ void setup() {
   }
 }
 
-#ifdef DEEPSLEEP_INTERVAL
+void loop() {
+  gps_loop();
+  ttn_loop();
+  screen_loop();
+  loopBLE();
 
-void doDeepSleep()
-{
-    uint64_t msecToWake = DEEPSLEEP_INTERVAL;
-    Serial.printf("Entering deep sleep %llu\n", msecToWake);
-
-    // not using wifi yet, but once we are this is needed to shutoff the radio hw
-    // esp_wifi_stop();
-
-    screen_off(); // datasheet says this will draw only 10ua
-    LMIC_shutdown(); // cleanly shutdown the radio
-    
-    if(axp192_found) {
-        // turn on after initial testing with real hardware
-        // axp.setPowerOutPut(AXP192_LDO2, AXP202_OFF); // LORA radio
-        // axp.setPowerOutPut(AXP192_LDO3, AXP202_OFF); // GPS main power
-    }
-
-    // FIXME - use an external 10k pulldown so we can leave the RTC peripherals powered off
-    // until then we need the following lines
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-
-    // Only GPIOs which are have RTC functionality can be used in this bit map: 0,2,4,12-15,25-27,32-39.
-    uint64_t gpioMask = (1ULL << BUTTON_PIN);
-
-    // FIXME change polarity so we can wake on ANY_HIGH instead - that would allow us to use all three buttons (instead of just the first)
-    gpio_pullup_en((gpio_num_t) BUTTON_PIN);
-
-    esp_sleep_enable_ext1_wakeup(gpioMask, ESP_EXT1_WAKEUP_ALL_LOW);
-
-    esp_sleep_enable_timer_wakeup(msecToWake * 1000ULL); // call expects usecs
-    esp_deep_sleep_start();                              // TBD mA sleep current (battery)
-}
-
-
-/// send ONE packet (or timeout waiting for GPS/LORA) and then enter deep sleep.  If screen is on let the user have a few seconds to
-/// see the results
-void deepSleepLoop() {
-  // Send every SEND_INTERVAL millis
-  static uint32_t last = 0, timeToSleep = 0;
-  static bool first = true;
-
-  uint32_t now = millis();
-
-  if(packetSent) { // we've sent at least one packet to the server
-    timeToSleep = ssd1306_found ? now + 5000 : now; // If the display is on allow the user a few seconds to see it, otherwise go to sleep ASAP
-  }
-
-  if(timeToSleep && now >= timeToSleep) // if a sleep was queued, possibly do it
-    doDeepSleep();
-
-  if (0 == last || now - last > SEND_INTERVAL) {
-    if (trySend()) {
-      last = millis();
-      first = false;
-      Serial.println("TRANSMITTED");
-    } else {
-      if (first) {
-        screen_print("Waiting GPS lock\n");
-        first = false;
-      }
-#ifdef GPS_WAIT_FOR_LOCK      
-      if (millis() > GPS_WAIT_FOR_LOCK) { // we never found a GPS lock, just go back to sleep
-        doDeepSleep();
-      }
-#endif
-    }
-  }
-}
-
-#else
-
-/// loop endlessly, sending a packet every SEND_INTERVAL
-void nonDeepSleepLoop() {
   if(packetSent) {
     packetSent = false;
     sleep();
+  }
+
+  // if user presses button for more than 3 secs, discard our network prefs and reboot (FIXME, use a debounce lib instead of this boilerplate)
+  static bool wasPressed = false;
+  static uint32_t minPressMs; // what tick should we call this press long enough
+  if(!digitalRead(BUTTON_PIN)) {
+    if(!wasPressed) { // just started a new press
+      Serial.println("pressing");
+      wasPressed = true;
+      minPressMs = millis() + 3000;
+    } 
+  } else if(wasPressed) {
+    // we just did a release
+    wasPressed = false;
+    if(millis() > minPressMs) {
+      // held long enough
+      screen_print("Erasing prefs");
+      ttn_erase_prefs();
+      delay(5000); // Give some time to read the screen
+      ESP.restart();
+    }
   }
 
   // Send every SEND_INTERVAL millis
@@ -430,22 +382,10 @@ void nonDeepSleepLoop() {
         sleep();
       }
 #endif
+
+      // No GPS lock yet, let the OS put the main CPU in low power mode for 100ms (or until another interrupt comes in)
+      // i.e. don't just keep spinning in loop as fast as we can.
+      delay(100);
     }
   }
-}
-
-#endif
-
-
-void loop() {
-  gps_loop();
-  ttn_loop();
-  screen_loop();
-  loopBLE();
-
-#ifdef DEEPSLEEP_INTERVAL
-  deepSleepLoop();
-#else
-  nonDeepSleepLoop();
-#endif
 }

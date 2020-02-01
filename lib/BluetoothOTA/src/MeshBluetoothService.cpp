@@ -36,11 +36,11 @@ public:
     /// if returns false, that means our node should send a DenyNodeNum response.  If true, we think the number is okay for use
     // bool handleWantNodeNum(NodeNum n);
 
-    /* void handleDenyNodeNum(NodeNum FIXME read mesh proto docs, perhaps picking a random node num is not a great idea
+    void handleDenyNodeNum(NodeNum FIXME read mesh proto docs, perhaps picking a random node num is not a great idea
     and instead we should use a special 'im unconfigured node number' and include our desired node number in the wantnum message.  the
     unconfigured node num would only be used while initially joining the mesh so low odds of conflicting (especially if we randomly select
     from a small number of nodenums which can be used temporarily for this operation).  figure out what the lower level
-    mesh sw does if it does conflict?  would it be better for people who are replying with denynode num to just broadcast their denial?) */
+    mesh sw does if it does conflict?  would it be better for people who are replying with denynode num to just broadcast their denial?)
 };
 
 class Mesh {
@@ -60,6 +60,12 @@ public:
 };
 
 */
+
+
+static BLECharacteristic meshFromRadioCharacteristic("8ba2bcc2-ee02-4a55-a531-c525c5e454d5", BLECharacteristic::PROPERTY_READ);
+static BLECharacteristic meshToRadioCharacteristic("f75c76d2-129e-4dad-a1dd-7866124401e7", BLECharacteristic::PROPERTY_WRITE);
+static BLECharacteristic meshFromNumCharacteristic("ed9da18c-a800-4f66-a670-aa7547e34453", BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
 
 /// Given a ToRadio buffer parse it and properly handle it (setup radio, owner or send packet into the mesh)
 static void handleToRadio(std::string s) {
@@ -93,10 +99,6 @@ class BluetoothMeshCallbacks : public BLECharacteristicCallbacks
 };
 
 static BluetoothMeshCallbacks btMeshCb;
-
-static BLECharacteristic meshFromRadioCharacteristic("8ba2bcc2-ee02-4a55-a531-c525c5e454d5", BLECharacteristic::PROPERTY_READ);
-static BLECharacteristic meshToRadioCharacteristic("f75c76d2-129e-4dad-a1dd-7866124401e7", BLECharacteristic::PROPERTY_WRITE);
-static BLECharacteristic meshFromNumCharacteristic("ed9da18c-a800-4f66-a670-aa7547e34453", BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
 /*
 MeshBluetoothService UUID 6ba1b218-15a8-461f-9fa8-5dcae273eafd
