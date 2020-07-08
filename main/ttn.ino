@@ -277,9 +277,9 @@ void ttn_join() {
             LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
             LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
 
-        #elif defined(CFG_us915)
+        #elif defined(CFG_us915) || defined(CFG_au915)
 
-            // NA-US channels 0-71 are configured automatically
+            // NA-US and AU channels 0-71 are configured automatically
             // but only one group of 8 should (a subband) should be active
             // TTN recommends the second sub band, 1 in a zero based count.
             // https://github.com/TheThingsNetwork/gateway-conf/blob/master/US-global_conf.json
@@ -289,6 +289,8 @@ void ttn_join() {
             // other regions, this will need to be changed.
             LMIC_selectSubBand(1);
 
+        #else
+        #error "Unsupported LoRa channel plan selected"
         #endif
 
         // TTN defines an additional channel at 869.525Mhz using SF9 for class B
