@@ -101,11 +101,13 @@ void doDeepSleep(uint64_t msecToWake)
     screen_off(); // datasheet says this will draw only 10ua
     LMIC_shutdown(); // cleanly shutdown the radio
     
+#ifdef T_BEAM_V10
     if(axp192_found) {
         // turn on after initial testing with real hardware
         axp.setPowerOutPut(AXP192_LDO2, AXP202_OFF); // LORA radio
         axp.setPowerOutPut(AXP192_LDO3, AXP202_OFF); // GPS main power
     }
+#endif
 
     // FIXME - use an external 10k pulldown so we can leave the RTC peripherals powered off
     // until then we need the following lines
@@ -213,10 +215,12 @@ void scanI2Cdevice(void)
                 ssd1306_found = true;
                 Serial.println("ssd1306 display found");
             }
+#ifdef T_BEAM_V10
             if (addr == AXP192_SLAVE_ADDRESS) {
                 axp192_found = true;
                 Serial.println("axp192 PMU found");
             }
+#endif
         } else if (err == 4) {
             Serial.print("Unknow error at address 0x");
             if (addr < 16)
@@ -241,6 +245,7 @@ void scanI2Cdevice(void)
     LDO2 200mA -> LORA
     LDO3 200mA -> GPS
  */
+#ifdef T_BEAM_V10
 void axp192Init() {
     if (axp192_found) {
         if (!axp.begin(Wire, AXP192_SLAVE_ADDRESS)) {
@@ -287,6 +292,7 @@ void axp192Init() {
         Serial.println("AXP192 not found");
     }
 }
+#endif
 
 
 // Perform power on init that we do on each wake from deep sleep
@@ -315,7 +321,9 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   scanI2Cdevice();
 
+#ifdef T_BEAM_V10
   axp192Init();
+#endif
 
   // Buttons & LED
   pinMode(BUTTON_PIN, INPUT_PULLUP);
